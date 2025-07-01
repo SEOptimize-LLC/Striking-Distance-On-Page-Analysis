@@ -7,13 +7,13 @@ import re
 
 # Page configuration
 st.set_page_config(
-    page_title="Striking Distance SEO Analysis",
+    page_title="Striking Distance On Page Analysis",
     page_icon="🎯",
     layout="wide"
 )
 
 # Title and description
-st.title("🎯 Striking Distance SEO Analysis Tool")
+st.title("🎯 Striking Distance On Page Analysis")
 st.markdown("""
 This tool cross-references Google Search Console performance data with Screaming Frog crawl data 
 to identify keyword optimization opportunities in "striking distance" (positions 4-20).
@@ -29,11 +29,19 @@ branded_terms = st.sidebar.text_area(
     help="Enter branded terms to exclude from analysis"
 ).strip().split('\n') if st.sidebar.text_area else []
 
-# Settings
-min_position = st.sidebar.number_input("Minimum Position", value=4, min_value=1, max_value=100)
-max_position = st.sidebar.number_input("Maximum Position", value=20, min_value=1, max_value=100)
-min_volume = st.sidebar.number_input("Minimum Search Volume", value=10, min_value=0)
-top_keywords_count = st.sidebar.number_input("Top Keywords to Analyze", value=10, min_value=1, max_value=20)
+# Top keywords setting
+top_keywords_count = st.sidebar.number_input(
+    "Top Keywords to Analyze (by Clicks)", 
+    value=10, 
+    min_value=1, 
+    max_value=20,
+    help="Number of top-performing keywords to analyze per URL, sorted by clicks"
+)
+
+# Fixed settings (not shown to user)
+min_position = 4
+max_position = 20
+min_volume = 0  # No minimum volume filter, rely on clicks instead
 
 # File uploaders
 col1, col2 = st.columns(2)
@@ -41,20 +49,29 @@ col1, col2 = st.columns(2)
 with col1:
     st.header("📊 Google Search Console Data")
     gsc_file = st.file_uploader(
-        "Upload GSC Performance Report (CSV)",
-        type=['csv'],
+        "Upload GSC Performance Report",
+        type=['csv', 'xlsx', 'xls'],
         help="Export from GSC with Query, Landing Page, Clicks, Impressions, CTR, Position"
     )
 
 with col2:
     st.header("🕷️ Screaming Frog Data")
     sf_file = st.file_uploader(
-        "Upload Screaming Frog Internal HTML Export (CSV)",
-        type=['csv'],
-        help="Export with Address, Title 1, H1-1, Meta Description 1, Copy 1, Indexability"
+        "Upload Screaming Frog Internal HTML Export",
+        type=['csv', 'xlsx', 'xls'],
+        help="Export with Address, Title 1, H1-1, Meta Description 1, H2-1 to H2-5, Copy 1, Indexability"
     )
 
 # Helper functions
+def load_file(file):
+    """Load CSV or Excel file into pandas DataFrame"""
+    if file.name.endswith('.csv'):
+        return pd.read_csv(file)
+    elif file.name.endswith(('.xlsx', '.xls')):
+        return pd.read_excel(file, engine='openpyxl' if file.name.endswith('.xlsx') else 'xlrd')
+    else:
+        raise ValueError("Unsupported file format")
+
 def clean_url(url):
     """Standardize URL format"""
     if pd.isna(url):
@@ -74,24 +91,31 @@ def check_keyword_presence(keyword, text):
 
 def process_gsc_data(df, branded_terms):
     """Process Google Search Console data"""
-    # Rename columns if needed
+    # Rename columns to standardized names
     column_mapping = {
         'Query': 'Keyword',
-        'Page': 'URL',
         'Landing Page': 'URL',
+        'Address': 'URL',
+        'Page': 'URL',
+        'Landing Pages': 'URL',
+        'URLs': 'URL',
+        'URL': 'URL',
         'Average Position': 'Position',
-        'Avg. position': 'Position'
+        'Avg. position': 'Position',
+        'Position': 'Position'
     }
     
+    # Apply column mapping
     for old_col, new_col in column_mapping.items():
         if old_col in df.columns and new_col not in df.columns:
             df.rename(columns={old_col: new_col}, inplace=True)
     
     # Ensure required columns exist
-    required_cols = ['Keyword', 'URL', 'Clicks', 'Position']
+    required_cols = ['Keyword', 'URL', 'Clicks']
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         st.error(f"Missing required columns in GSC data: {missing_cols}")
+        st.info("Expected columns: Query, Landing Page (or Address/URLs), Clicks")
         return None
     
     # Clean data
@@ -101,10 +125,15 @@ def process_gsc_data(df, branded_terms):
     
     # Convert to appropriate data types
     df['Clicks'] = pd.to_numeric(df['Clicks'], errors='coerce').fillna(0)
-    df['Position'] = pd.to_numeric(df['Position'], errors='coerce')
     
-    # Filter by position
-    df = df[(df['Position'] >= min_position) & (df['Position'] <= max_position)]
+    # If Position column exists, use it for filtering, otherwise assume all are in range
+    if 'Position' in df.columns:
+        df['Position'] = pd.to_numeric(df['Position'], errors='coerce')
+        df = df[(df['Position'] >= min_position) & (df['Position'] <= max_position)]
+    else:
+        # If no position data, assign a default position in the middle of the range
+        df['Position'] = 10.0
+        st.warning("No position data found in GSC export. Analyzing all keywords.")
     
     # Exclude branded terms
     if branded_terms:
@@ -119,36 +148,52 @@ def process_gsc_data(df, branded_terms):
 
 def process_crawl_data(df):
     """Process Screaming Frog crawl data"""
-    # Rename columns to standardized names
-    column_mapping = {
-        'Address': 'URL',
-        'Title 1': 'Title',
-        'H1-1': 'H1',
-        'H1 1': 'H1',
-        'Meta Description 1': 'Meta Description',
-        'Copy 1': 'Copy'
-    }
+    # Clean URL - Address is the main column name
+    url_columns = ['Address', 'URL', 'Landing Page', 'Landing Pages', 'URLs']
+    url_col = None
+    for col in url_columns:
+        if col in df.columns:
+            url_col = col
+            df.rename(columns={col: 'URL'}, inplace=True)
+            break
     
-    for old_col, new_col in column_mapping.items():
-        if old_col in df.columns:
-            df.rename(columns={old_col: new_col}, inplace=True)
+    if not url_col:
+        st.error("No URL/Address column found in Screaming Frog data")
+        return None
     
-    # Clean URL
     df['URL'] = df['URL'].apply(clean_url)
     
     # Filter only indexable pages if column exists
     if 'Indexability' in df.columns:
         df = df[df['Indexability'] == 'Indexable']
     
-    # Keep only necessary columns
-    keep_cols = ['URL', 'Title', 'H1', 'Meta Description', 'Copy']
-    available_cols = [col for col in keep_cols if col in df.columns]
-    df = df[available_cols]
+    # Keep available columns from the expected set
+    expected_cols = {
+        'URL': 'URL',
+        'Title 1': 'Title',
+        'H1-1': 'H1',
+        'Meta Description 1': 'Meta Description',
+        'H2-1': 'H2-1',
+        'H2-2': 'H2-2', 
+        'H2-3': 'H2-3',
+        'H2-4': 'H2-4',
+        'H2-5': 'H2-5',
+        'Copy 1': 'Copy'
+    }
     
-    # Fill NaN values with empty strings
-    df = df.fillna('')
+    # Create a new dataframe with only the columns that exist
+    processed_df = pd.DataFrame()
+    processed_df['URL'] = df['URL']
     
-    return df
+    # Add each column if it exists, otherwise create empty column
+    for orig_col, new_col in expected_cols.items():
+        if orig_col != 'URL':  # URL already processed
+            if orig_col in df.columns:
+                processed_df[new_col] = df[orig_col].fillna('')
+            else:
+                processed_df[new_col] = ''
+    
+    return processed_df
 
 def create_striking_distance_report(gsc_df, crawl_df):
     """Create the final striking distance report"""
@@ -207,6 +252,21 @@ def create_striking_distance_report(gsc_df, crawl_df):
                 lambda row: check_keyword_presence(row.get(kw_col), row.get('Meta Description', '')), 
                 axis=1
             )
+            # Check in H2s (combine all H2s for checking)
+            def check_in_h2s(row, keyword):
+                h2_content = ' '.join([
+                    str(row.get('H2-1', '')),
+                    str(row.get('H2-2', '')),
+                    str(row.get('H2-3', '')),
+                    str(row.get('H2-4', '')),
+                    str(row.get('H2-5', ''))
+                ])
+                return check_keyword_presence(keyword, h2_content)
+            
+            report_df[f'KW{i} in H2s'] = report_df.apply(
+                lambda row: check_in_h2s(row, row.get(kw_col)), 
+                axis=1
+            )
             # Check in Copy
             report_df[f'KW{i} in Copy'] = report_df.apply(
                 lambda row: check_keyword_presence(row.get(kw_col), row.get('Copy', '')), 
@@ -223,8 +283,8 @@ if gsc_file and sf_file:
     try:
         # Load data
         with st.spinner("Loading data..."):
-            gsc_df = pd.read_csv(gsc_file)
-            crawl_df = pd.read_csv(sf_file)
+            gsc_df = load_file(gsc_file)
+            crawl_df = load_file(sf_file)
         
         # Process data
         with st.spinner("Processing GSC data..."):
@@ -268,6 +328,8 @@ if gsc_file and sf_file:
                             elements_missing.append('H1')
                         if not row.get(f'KW{i} in Meta Desc', True):
                             elements_missing.append('Meta Desc')
+                        if not row.get(f'KW{i} in H2s', True):
+                            elements_missing.append('H2s')
                         if not row.get(f'KW{i} in Copy', True):
                             elements_missing.append('Copy')
                         
@@ -322,6 +384,7 @@ if gsc_file and sf_file:
                         f'KW{i} Clicks',
                         f'KW{i} in Title',
                         f'KW{i} in H1',
+                        f'KW{i} in H2s',
                         f'KW{i} in Copy'
                     ])
             
@@ -333,7 +396,8 @@ if gsc_file and sf_file:
             
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
-        st.write("Please check that your CSV files have the correct format and columns.")
+        st.write("Please check that your files have the correct format and columns.")
+        st.write("Supported formats: CSV, XLSX, XLS")
 
 else:
     # Instructions
@@ -343,21 +407,28 @@ else:
         st.markdown("""
         ### Google Search Console Export
         Required columns:
-        - **Query** (or Keyword)
-        - **Page** (or URL, Landing Page)
-        - **Clicks**
-        - **Impressions**
-        - **CTR**
-        - **Average Position** (or Position)
+        - **Query** - The search term/keyword
+        - **Landing Page** (or Address/URL) - The URL that appeared in search
+        - **Clicks** - Number of clicks received
+        
+        Optional but recommended:
+        - **Position** - Average ranking position
+        - **Impressions** - Number of times shown in search
+        - **CTR** - Click-through rate
         
         ### Screaming Frog Export
         Required columns:
-        - **Address** (URL)
-        - **Title 1**
-        - **H1-1** (or H1 1)
-        - **Meta Description 1**
-        - **Copy 1** (optional but recommended)
-        - **Indexability** (optional but recommended)
+        - **Address** - The page URL
+        - **Title 1** - Page title tag
+        - **Meta Description 1** - Meta description tag
+        - **H1-1** - Primary H1 heading
+        
+        Optional columns (will be used if present):
+        - **H2-1** through **H2-5** - H2 subheadings
+        - **Copy 1** - Main page content
+        - **Indexability** - To filter only indexable pages
+        
+        Note: Missing optional columns won't stop the analysis - the tool will work with whatever data is available.
         
         ### Setting up Screaming Frog Custom Extraction
         1. Go to Configuration > Custom > Extraction
