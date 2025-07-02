@@ -70,7 +70,27 @@ def load_file(file):
         file_ext = file.name.lower().split('.')[-1]
         
         if file_ext == 'csv':
-            return pd.read_csv(file)
+            # Try to detect delimiter
+            # Read first line to check delimiter
+            file_content = file.read()
+            file.seek(0)  # Reset file pointer
+            
+            # Check first line for delimiter
+            first_line = file_content.decode('utf-8').split('\n')[0]
+            if ';' in first_line and ',' not in first_line:
+                # Semicolon-delimited
+                df = pd.read_csv(file, delimiter=';')
+            elif '\t' in first_line:
+                # Tab-delimited
+                df = pd.read_csv(file, delimiter='\t')
+            else:
+                # Default comma-delimited
+                df = pd.read_csv(file)
+            
+            # Clean column names (remove extra spaces)
+            df.columns = df.columns.str.strip()
+            return df
+            
         elif file_ext == 'xlsx':
             return pd.read_excel(file, engine='openpyxl')
         elif file_ext == 'xls':
@@ -106,10 +126,6 @@ def check_keyword_presence(keyword, text):
 
 def process_gsc_data(df, branded_terms):
     """Process Google Search Console data"""
-    # Debug: Show what columns we actually have
-    st.write("Debug - Columns found in GSC file:")
-    st.write(list(df.columns))
-    
     # Clean column names (remove extra spaces, normalize)
     df.columns = df.columns.str.strip()
     
