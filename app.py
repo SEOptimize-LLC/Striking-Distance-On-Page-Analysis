@@ -23,13 +23,11 @@ to identify keyword optimization opportunities in "striking distance" (positions
 st.sidebar.header("⚙️ Configuration")
 
 # Branded terms input
-branded_terms_input = st.sidebar.text_area(
+branded_terms = st.sidebar.text_area(
     "Branded Terms to Exclude (one per line)",
     placeholder="yourbrand\ncompany name\nbrand variations",
     help="Enter branded terms to exclude from analysis"
-)
-
-branded_terms = branded_terms_input.strip().split('\n') if branded_terms_input.strip() else []
+).strip().split('\n') if st.sidebar.text_area else []
 
 # Top keywords setting
 top_keywords_count = st.sidebar.number_input(
@@ -66,31 +64,28 @@ with col2:
 
 # Helper functions
 def load_file(file):
-    """Load CSV or Excel file into pandas DataFrame with robust parsing"""
-    if file.name.endswith('.csv'):
-        file.seek(0)
-        return pd.read_csv(
-            file,
-            engine='python',
-            on_bad_lines='skip',
-            encoding='utf-8-sig',  # Auto-removes BOM
-            skipinitialspace=True  # Strips spaces after delimiter
-        )
-    elif file.name.endswith(('.xlsx', '.xls')):
-        return pd.read_excel(file, engine='openpyxl' if file.name.endswith('.xlsx') else 'xlrd')
-    else:
-        raise ValueError("Unsupported file format")
-
-def normalize_columns(df):
-    """Normalize column names to handle various formats and encodings"""
-    df.columns = (
-        df.columns
-        .str.strip()           # Remove leading/trailing spaces
-        .str.replace('\ufeff', '')  # Remove BOM if present
-        .str.replace(' ', '_')      # Replace spaces with underscores
-        .str.lower()               # Convert to lowercase
-    )
-    return df
+    """Load CSV or Excel file into pandas DataFrame"""
+    try:
+        # Get file extension from name
+        file_ext = file.name.lower().split('.')[-1]
+        
+        if file_ext == 'csv':
+            return pd.read_csv(file)
+        elif file_ext == 'xlsx':
+            return pd.read_excel(file, engine='openpyxl')
+        elif file_ext == 'xls':
+            return pd.read_excel(file, engine='xlrd')
+        else:
+            # Try to determine by content type
+            if hasattr(file, 'type'):
+                if 'csv' in file.type:
+                    return pd.read_csv(file)
+                elif 'excel' in file.type or 'spreadsheet' in file.type:
+                    return pd.read_excel(file)
+            raise ValueError(f"Unsupported file format: {file.name}")
+    except Exception as e:
+        st.error(f"Error reading file {file.name}: {str(e)}")
+        raise
 
 def clean_url(url):
     """Standardize URL format"""
@@ -111,123 +106,107 @@ def check_keyword_presence(keyword, text):
 
 def process_gsc_data(df, branded_terms):
     """Process Google Search Console data"""
-    # Normalize column names first
-    df = normalize_columns(df)
-    
-    # Comprehensive column mapping for GSC data
-    gsc_column_mapping = {
-        'query': 'keyword',
-        'queries': 'keyword',
-        'search_query': 'keyword',
-        'landing_page': 'url',
-        'landing_pages': 'url',
-        'address': 'url',
-        'page': 'url',
-        'urls': 'url',
-        'url': 'url',
-        'average_position': 'position',
-        'avg._position': 'position',
-        'avg_position': 'position',
-        'position': 'position',
-        'clicks': 'clicks',
-        'impressions': 'impressions',
-        'ctr': 'ctr'
+    # Rename columns to standardized names
+    column_mapping = {
+        'Query': 'Keyword',
+        'Landing Page': 'URL',
+        'Address': 'URL',
+        'Page': 'URL',
+        'Landing Pages': 'URL',
+        'URLs': 'URL',
+        'URL': 'URL',
+        'Average Position': 'Position',
+        'Avg. position': 'Position',
+        'Position': 'Position'
     }
     
     # Apply column mapping
-    df.rename(columns=gsc_column_mapping, inplace=True)
+    for old_col, new_col in column_mapping.items():
+        if old_col in df.columns and new_col not in df.columns:
+            df.rename(columns={old_col: new_col}, inplace=True)
     
     # Ensure required columns exist
-    required_cols = ['keyword', 'url', 'clicks']
+    required_cols = ['Keyword', 'URL', 'Clicks']
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         st.error(f"Missing required columns in GSC data: {missing_cols}")
         st.info("Expected columns: Query, Landing Page (or Address/URLs), Clicks")
-        st.write("Available columns after processing:", list(df.columns))
         return None
     
     # Clean data
-    df['url'] = df['url'].apply(clean_url)
-    df = df[df['url'].notna() & (df['url'] != '')]
-    df = df[df['keyword'].notna() & (df['keyword'] != '')]
+    df['URL'] = df['URL'].apply(clean_url)
+    df = df[df['URL'].notna() & (df['URL'] != '')]
+    df = df[df['Keyword'].notna() & (df['Keyword'] != '')]
     
     # Convert to appropriate data types
-    df['clicks'] = pd.to_numeric(df['clicks'], errors='coerce').fillna(0)
+    df['Clicks'] = pd.to_numeric(df['Clicks'], errors='coerce').fillna(0)
     
     # If Position column exists, use it for filtering, otherwise assume all are in range
-    if 'position' in df.columns:
-        df['position'] = pd.to_numeric(df['position'], errors='coerce')
-        df = df[(df['position'] >= min_position) & (df['position'] <= max_position)]
+    if 'Position' in df.columns:
+        df['Position'] = pd.to_numeric(df['Position'], errors='coerce')
+        df = df[(df['Position'] >= min_position) & (df['Position'] <= max_position)]
     else:
         # If no position data, assign a default position in the middle of the range
-        df['position'] = 10.0
+        df['Position'] = 10.0
         st.warning("No position data found in GSC export. Analyzing all keywords.")
     
     # Exclude branded terms
     if branded_terms:
         pattern = '|'.join([re.escape(term.strip()) for term in branded_terms if term.strip()])
         if pattern:
-            df = df[~df['keyword'].str.contains(pattern, case=False, na=False)]
+            df = df[~df['Keyword'].str.contains(pattern, case=False, na=False)]
     
     # Sort by clicks (descending) and get top keywords per URL
-    df = df.sort_values(['url', 'clicks'], ascending=[True, False])
+    df = df.sort_values(['URL', 'Clicks'], ascending=[True, False])
     
     return df
 
 def process_crawl_data(df):
     """Process Screaming Frog crawl data"""
-    # Normalize column names first
-    df = normalize_columns(df)
-    
-    # Look for URL column variants
-    url_columns = ['address', 'url', 'landing_page', 'landing_pages', 'urls']
+    # Clean URL - Address is the main column name
+    url_columns = ['Address', 'URL', 'Landing Page', 'Landing Pages', 'URLs']
     url_col = None
     for col in url_columns:
         if col in df.columns:
             url_col = col
-            df.rename(columns={col: 'url'}, inplace=True)
+            df.rename(columns={col: 'URL'}, inplace=True)
             break
     
     if not url_col:
         st.error("No URL/Address column found in Screaming Frog data")
-        st.write("Available columns:", list(df.columns))
         return None
     
-    df['url'] = df['url'].apply(clean_url)
+    df['URL'] = df['URL'].apply(clean_url)
     
     # Filter only indexable pages if column exists
-    if 'indexability' in df.columns:
-        df = df[df['indexability'].str.lower() == 'indexable']
+    if 'Indexability' in df.columns:
+        df = df[df['Indexability'] == 'Indexable']
     
-    # Expected columns mapping (flexible for missing data)
+    # Keep available columns from the expected set
     expected_cols = {
-        'title_1': 'title',
-        'h1-1': 'h1',
-        'h1_1': 'h1',
-        'meta_description_1': 'meta_description',
-        'h2-1': 'h2_1',
-        'h2_1': 'h2_1',
-        'h2-2': 'h2_2',
-        'h2_2': 'h2_2',
-        'h2-3': 'h2_3',
-        'h2_3': 'h2_3',
-        'h2-4': 'h2_4',
-        'h2_4': 'h2_4',
-        'h2-5': 'h2_5',
-        'h2_5': 'h2_5',
-        'copy_1': 'copy'
+        'URL': 'URL',
+        'Title 1': 'Title',
+        'H1-1': 'H1',
+        'Meta Description 1': 'Meta Description',
+        'H2-1': 'H2-1',
+        'H2-2': 'H2-2', 
+        'H2-3': 'H2-3',
+        'H2-4': 'H2-4',
+        'H2-5': 'H2-5',
+        'Copy 1': 'Copy'
     }
     
-    # Create processed dataframe
+    # Create a new dataframe with only the columns that exist
     processed_df = pd.DataFrame()
-    processed_df['url'] = df['url']
+    processed_df['URL'] = df['URL']
     
     # Add each column if it exists, otherwise create empty column
     for orig_col, new_col in expected_cols.items():
-        if orig_col in df.columns:
-            processed_df[new_col] = df[orig_col].fillna('')
-        else:
-            processed_df[new_col] = ''
+        if orig_col != 'URL':  # URL already processed
+            if orig_col in df.columns:
+                processed_df[new_col] = df[orig_col].fillna('')
+            else:
+                processed_df[new_col] = ''
     
     return processed_df
 
@@ -236,14 +215,14 @@ def create_striking_distance_report(gsc_df, crawl_df):
     # Get top keywords per URL
     top_keywords = []
     
-    for url in gsc_df['url'].unique():
-        url_data = gsc_df[gsc_df['url'] == url].head(top_keywords_count)
+    for url in gsc_df['URL'].unique():
+        url_data = gsc_df[gsc_df['URL'] == url].head(top_keywords_count)
         if len(url_data) > 0:
             top_keywords.append({
-                'url': url,
-                'total_clicks': url_data['clicks'].sum(),
-                'keywords_count': len(url_data),
-                'keywords': url_data[['keyword', 'clicks', 'position']].to_dict('records')
+                'URL': url,
+                'Total_Clicks': url_data['Clicks'].sum(),
+                'Keywords_Count': len(url_data),
+                'Keywords': url_data[['Keyword', 'Clicks', 'Position']].to_dict('records')
             })
     
     # Create report dataframe
@@ -251,66 +230,66 @@ def create_striking_distance_report(gsc_df, crawl_df):
     
     for item in top_keywords:
         row = {
-            'url': item['url'],
-            'total_clicks': item['total_clicks'],
-            'keywords_count': item['keywords_count']
+            'URL': item['URL'],
+            'Total Clicks (Top Keywords)': item['Total_Clicks'],
+            'Keywords in Striking Distance': item['Keywords_Count']
         }
         
         # Add top keywords
-        for i, kw_data in enumerate(item['keywords'][:10], 1):
-            row[f'keyword_{i}'] = kw_data['keyword']
-            row[f'kw{i}_clicks'] = kw_data['clicks']
-            row[f'kw{i}_position'] = round(kw_data['position'], 1)
+        for i, kw_data in enumerate(item['Keywords'][:10], 1):
+            row[f'Keyword {i}'] = kw_data['Keyword']
+            row[f'KW{i} Clicks'] = kw_data['Clicks']
+            row[f'KW{i} Position'] = round(kw_data['Position'], 1)
         
         report_data.append(row)
     
     report_df = pd.DataFrame(report_data)
     
     # Merge with crawl data
-    report_df = pd.merge(report_df, crawl_df, on='url', how='left')
+    report_df = pd.merge(report_df, crawl_df, on='URL', how='left')
     
     # Check keyword presence in on-page elements
     for i in range(1, 11):
-        kw_col = f'keyword_{i}'
+        kw_col = f'Keyword {i}'
         if kw_col in report_df.columns:
             # Check in Title
-            report_df[f'kw{i}_in_title'] = report_df.apply(
-                lambda row: check_keyword_presence(row.get(kw_col), row.get('title', '')), 
+            report_df[f'KW{i} in Title'] = report_df.apply(
+                lambda row: check_keyword_presence(row.get(kw_col), row.get('Title', '')), 
                 axis=1
             )
             # Check in H1
-            report_df[f'kw{i}_in_h1'] = report_df.apply(
-                lambda row: check_keyword_presence(row.get(kw_col), row.get('h1', '')), 
+            report_df[f'KW{i} in H1'] = report_df.apply(
+                lambda row: check_keyword_presence(row.get(kw_col), row.get('H1', '')), 
                 axis=1
             )
             # Check in Meta Description
-            report_df[f'kw{i}_in_meta_desc'] = report_df.apply(
-                lambda row: check_keyword_presence(row.get(kw_col), row.get('meta_description', '')), 
+            report_df[f'KW{i} in Meta Desc'] = report_df.apply(
+                lambda row: check_keyword_presence(row.get(kw_col), row.get('Meta Description', '')), 
                 axis=1
             )
             # Check in H2s (combine all H2s for checking)
             def check_in_h2s(row, keyword):
                 h2_content = ' '.join([
-                    str(row.get('h2_1', '')),
-                    str(row.get('h2_2', '')),
-                    str(row.get('h2_3', '')),
-                    str(row.get('h2_4', '')),
-                    str(row.get('h2_5', ''))
+                    str(row.get('H2-1', '')),
+                    str(row.get('H2-2', '')),
+                    str(row.get('H2-3', '')),
+                    str(row.get('H2-4', '')),
+                    str(row.get('H2-5', ''))
                 ])
                 return check_keyword_presence(keyword, h2_content)
             
-            report_df[f'kw{i}_in_h2s'] = report_df.apply(
+            report_df[f'KW{i} in H2s'] = report_df.apply(
                 lambda row: check_in_h2s(row, row.get(kw_col)), 
                 axis=1
             )
             # Check in Copy
-            report_df[f'kw{i}_in_copy'] = report_df.apply(
-                lambda row: check_keyword_presence(row.get(kw_col), row.get('copy', '')), 
+            report_df[f'KW{i} in Copy'] = report_df.apply(
+                lambda row: check_keyword_presence(row.get(kw_col), row.get('Copy', '')), 
                 axis=1
             )
     
     # Sort by total clicks
-    report_df = report_df.sort_values('total_clicks', ascending=False)
+    report_df = report_df.sort_values('Total Clicks (Top Keywords)', ascending=False)
     
     return report_df
 
@@ -330,107 +309,103 @@ if gsc_file and sf_file:
             with st.spinner("Processing crawl data..."):
                 processed_crawl = process_crawl_data(crawl_df)
             
-            if processed_crawl is not None:
-                with st.spinner("Creating striking distance report..."):
-                    report = create_striking_distance_report(processed_gsc, processed_crawl)
+            with st.spinner("Creating striking distance report..."):
+                report = create_striking_distance_report(processed_gsc, processed_crawl)
+            
+            # Display results
+            st.success(f"✅ Analysis complete! Found {len(report)} URLs with striking distance opportunities.")
+            
+            # Summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total URLs Analyzed", len(report))
+            with col2:
+                total_keywords = sum([report[f'Keywords in Striking Distance'].sum()])
+                st.metric("Total Keywords in Striking Distance", int(total_keywords))
+            with col3:
+                total_clicks = report['Total Clicks (Top Keywords)'].sum()
+                st.metric("Total Clicks Potential", int(total_clicks))
+            
+            # Display top opportunities
+            st.header("🎯 Top Optimization Opportunities")
+            
+            # Filter to show only URLs with missing keywords in elements
+            opportunities = []
+            for idx, row in report.iterrows():
+                missing_elements = []
+                for i in range(1, 11):
+                    kw_col = f'Keyword {i}'
+                    if kw_col in row and pd.notna(row[kw_col]) and row[kw_col] != '':
+                        elements_missing = []
+                        if not row.get(f'KW{i} in Title', True):
+                            elements_missing.append('Title')
+                        if not row.get(f'KW{i} in H1', True):
+                            elements_missing.append('H1')
+                        if not row.get(f'KW{i} in Meta Desc', True):
+                            elements_missing.append('Meta Desc')
+                        if not row.get(f'KW{i} in H2s', True):
+                            elements_missing.append('H2s')
+                        if not row.get(f'KW{i} in Copy', True):
+                            elements_missing.append('Copy')
+                        
+                        if elements_missing:
+                            missing_elements.append({
+                                'keyword': row[kw_col],
+                                'clicks': row.get(f'KW{i} Clicks', 0),
+                                'position': row.get(f'KW{i} Position', 0),
+                                'missing_in': elements_missing
+                            })
                 
-                # Display results
-                st.success(f"✅ Analysis complete! Found {len(report)} URLs with striking distance opportunities.")
+                if missing_elements:
+                    opportunities.append({
+                        'URL': row['URL'],
+                        'Total_Clicks': row['Total Clicks (Top Keywords)'],
+                        'Missing_Keywords': missing_elements
+                    })
+            
+            # Display opportunities
+            if opportunities:
+                st.write(f"Found {len(opportunities)} URLs with optimization opportunities:")
                 
-                # Summary metrics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total URLs Analyzed", len(report))
-                with col2:
-                    total_keywords = report['keywords_count'].sum()
-                    st.metric("Total Keywords in Striking Distance", int(total_keywords))
-                with col3:
-                    total_clicks = report['total_clicks'].sum()
-                    st.metric("Total Clicks Potential", int(total_clicks))
-                
-                # Display top opportunities
-                st.header("🎯 Top Optimization Opportunities")
-                
-                # Filter to show only URLs with missing keywords in elements
-                opportunities = []
-                for idx, row in report.iterrows():
-                    missing_elements = []
-                    for i in range(1, 11):
-                        kw_col = f'keyword_{i}'
-                        if kw_col in row and pd.notna(row[kw_col]) and row[kw_col] != '':
-                            elements_missing = []
-                            if not row.get(f'kw{i}_in_title', True):
-                                elements_missing.append('Title')
-                            if not row.get(f'kw{i}_in_h1', True):
-                                elements_missing.append('H1')
-                            if not row.get(f'kw{i}_in_meta_desc', True):
-                                elements_missing.append('Meta Desc')
-                            if not row.get(f'kw{i}_in_h2s', True):
-                                elements_missing.append('H2s')
-                            if not row.get(f'kw{i}_in_copy', True):
-                                elements_missing.append('Copy')
-                            
-                            if elements_missing:
-                                missing_elements.append({
-                                    'keyword': row[kw_col],
-                                    'clicks': row.get(f'kw{i}_clicks', 0),
-                                    'position': row.get(f'kw{i}_position', 0),
-                                    'missing_in': elements_missing
-                                })
-                    
-                    if missing_elements:
-                        opportunities.append({
-                            'url': row['url'],
-                            'total_clicks': row['total_clicks'],
-                            'missing_keywords': missing_elements
-                        })
-                
-                # Display opportunities
-                if opportunities:
-                    st.write(f"Found {len(opportunities)} URLs with optimization opportunities:")
-                    
-                    for opp in opportunities[:10]:  # Show top 10
-                        with st.expander(f"🔗 {opp['url']} (Potential: {int(opp['total_clicks'])} clicks)"):
-                            for mk in opp['missing_keywords']:
-                                st.write(f"**Keyword:** {mk['keyword']}")
-                                st.write(f"- Clicks: {int(mk['clicks'])}")
-                                st.write(f"- Position: {mk['position']:.1f}")
-                                st.write(f"- Missing in: {', '.join(mk['missing_in'])}")
-                                st.write("---")
-                else:
-                    st.info("🎉 Great news! All your striking distance keywords are already well-optimized in your on-page elements.")
-                
-                # Full report
-                st.header("📊 Full Report")
-                
-                # Create download button
-                csv = report.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download Full Report (CSV)",
-                    data=csv,
-                    file_name="striking_distance_report.csv",
-                    mime="text/csv"
-                )
-                
-                # Display sample of report
-                st.subheader("Report Preview (First 10 rows)")
-                # Select columns to display
-                display_cols = ['url', 'total_clicks', 'keywords_count']
-                for i in range(1, 4):  # Show first 3 keywords
-                    if f'keyword_{i}' in report.columns:
-                        display_cols.extend([
-                            f'keyword_{i}', 
-                            f'kw{i}_clicks',
-                            f'kw{i}_in_title',
-                            f'kw{i}_in_h1',
-                            f'kw{i}_in_h2s',
-                            f'kw{i}_in_copy'
-                        ])
-                
-                available_display_cols = [col for col in display_cols if col in report.columns]
-                st.dataframe(report[available_display_cols].head(10))
-            else:
-                st.error("Failed to process Screaming Frog data. Please check the file format and column names.")
+                for opp in opportunities[:10]:  # Show top 10
+                    with st.expander(f"🔗 {opp['URL']} (Potential: {int(opp['Total_Clicks'])} clicks)"):
+                        for mk in opp['Missing_Keywords']:
+                            st.write(f"**Keyword:** {mk['keyword']}")
+                            st.write(f"- Clicks: {int(mk['clicks'])}")
+                            st.write(f"- Position: {mk['position']:.1f}")
+                            st.write(f"- Missing in: {', '.join(mk['missing_in'])}")
+                            st.write("---")
+            
+            # Full report
+            st.header("📊 Full Report")
+            
+            # Create download button
+            csv = report.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Full Report (CSV)",
+                data=csv,
+                file_name="striking_distance_report.csv",
+                mime="text/csv"
+            )
+            
+            # Display sample of report
+            st.subheader("Report Preview (First 10 rows)")
+            # Select columns to display
+            display_cols = ['URL', 'Total Clicks (Top Keywords)', 'Keywords in Striking Distance']
+            for i in range(1, 4):  # Show first 3 keywords
+                if f'Keyword {i}' in report.columns:
+                    display_cols.extend([
+                        f'Keyword {i}', 
+                        f'KW{i} Clicks',
+                        f'KW{i} in Title',
+                        f'KW{i} in H1',
+                        f'KW{i} in H2s',
+                        f'KW{i} in Copy'
+                    ])
+            
+            available_display_cols = [col for col in display_cols if col in report.columns]
+            st.dataframe(report[available_display_cols].head(10))
+            
         else:
             st.warning("No keywords found in the specified position range after filtering.")
             
@@ -438,6 +413,10 @@ if gsc_file and sf_file:
         st.error(f"An error occurred: {str(e)}")
         st.write("Please check that your files have the correct format and columns.")
         st.write("Supported formats: CSV, XLSX, XLS")
+        
+        # More detailed error info for debugging
+        if "load_file" in str(e) or "read_excel" in str(e):
+            st.info("💡 Tip: If you're having issues with Excel files, try saving as CSV format instead.")
 
 else:
     # Instructions
@@ -468,7 +447,7 @@ else:
         - **Copy 1** - Main page content
         - **Indexability** - To filter only indexable pages
         
-        Note: Missing optional columns will not stop the analysis - the tool will work with whatever data is available.
+        Note: Missing optional columns won't stop the analysis - the tool will work with whatever data is available.
         
         ### Setting up Screaming Frog Custom Extraction
         1. Go to Configuration > Custom > Extraction
