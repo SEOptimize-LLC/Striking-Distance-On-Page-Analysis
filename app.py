@@ -29,6 +29,13 @@ branded_terms = st.sidebar.text_area(
     help="Enter branded terms to exclude from analysis"
 ).strip().split('\n') if st.sidebar.text_area else []
 
+# URL exclusions input
+excluded_urls = st.sidebar.text_area(
+    "URLs to Exclude (one per line - EXACT MATCH)",
+    placeholder="https://www.trysnow.com/blogs/news\n/admin\n/search",
+    help="Enter exact URLs to exclude. Will NOT exclude sub-pages (e.g., /blogs/news won't exclude /blogs/news/article-title)"
+).strip().split('\n') if st.sidebar.text_area else []
+
 # Top keywords setting
 top_keywords_count = st.sidebar.number_input(
     "Top Keywords to Analyze (by Clicks)", 
@@ -120,10 +127,41 @@ def clean_url(url):
 def check_keyword_presence(keyword, text):
     """Check if keyword exists in text (case-insensitive)"""
     if pd.isna(keyword) or pd.isna(text) or keyword == "" or text == "":
-        return False
+        return None  # Return None for missing data
     return str(keyword).lower() in str(text).lower()
 
-def process_gsc_data(df, branded_terms):
+def should_exclude_url(url, excluded_urls):
+    """Check if URL should be excluded based on exact match or parameters"""
+    # Check for URL parameters
+    if any(param in str(url) for param in ['?', '=', '#']):
+        return True
+    
+    # Check against excluded URLs list - EXACT MATCH ONLY
+    if excluded_urls:
+        # Normalize the URL for comparison (remove trailing slashes)
+        normalized_url = str(url).rstrip('/')
+        
+        for excluded in excluded_urls:
+            excluded = excluded.strip()
+            if excluded:
+                # Normalize the excluded URL too
+                excluded_normalized = excluded.rstrip('/')
+                
+                # Check for exact match (not substring)
+                if normalized_url == excluded_normalized:
+                    return True
+                
+                # Also check if the full URL matches when protocol is missing
+                if not excluded_normalized.startswith('http'):
+                    # Try matching with common protocols
+                    if (normalized_url == f"https://{excluded_normalized}" or 
+                        normalized_url == f"http://{excluded_normalized}" or
+                        normalized_url.endswith(f"/{excluded_normalized}")):
+                        return True
+    
+    return False
+
+def process_gsc_data(df, branded_terms, excluded_urls):
     """Process Google Search Console data"""
     # Clean column names (remove extra spaces, normalize)
     df.columns = df.columns.str.strip()
@@ -188,6 +226,13 @@ def process_gsc_data(df, branded_terms):
     df['URL'] = df['URL'].apply(clean_url)
     df = df[df['URL'].notna() & (df['URL'] != '')]
     df = df[df['Keyword'].notna() & (df['Keyword'] != '')]
+    
+    # Exclude URLs with parameters or in exclusion list
+    initial_count = len(df)
+    df = df[~df['URL'].apply(lambda x: should_exclude_url(x, excluded_urls))]
+    excluded_count = initial_count - len(df)
+    if excluded_count > 0:
+        st.info(f"Excluded {excluded_count} URLs (parameter URLs and exact matches from exclusion list)")
     
     # Convert to appropriate data types
     df['Clicks'] = pd.to_numeric(df['Clicks'], errors='coerce').fillna(0)
@@ -301,15 +346,26 @@ def create_striking_distance_report(gsc_df, crawl_df):
         for _, kw_row in url_data.iterrows():
             keyword = kw_row['Keyword']
             
+            # Check keyword presence and handle missing data
+            in_title = check_keyword_presence(keyword, title)
+            in_meta = check_keyword_presence(keyword, meta_desc)
+            in_h1 = check_keyword_presence(keyword, h1)
+            in_h2 = check_keyword_presence(keyword, h2_content)
+            in_body = check_keyword_presence(keyword, copy)
+            
+            # Convert None to "No Data" for Body column, keep TRUE/FALSE for others
+            if in_body is None:
+                in_body = "No Data"
+            
             report_data.append({
                 'URL': url,
                 'Keyword': keyword,
                 'Clicks': int(kw_row['Clicks']),
-                'In Title': check_keyword_presence(keyword, title),
-                'In Meta': check_keyword_presence(keyword, meta_desc),
-                'In H1': check_keyword_presence(keyword, h1),
-                'In H2': check_keyword_presence(keyword, h2_content),
-                'In Body': check_keyword_presence(keyword, copy)
+                'In Title': in_title if in_title is not None else False,
+                'In Meta': in_meta if in_meta is not None else False,
+                'In H1': in_h1 if in_h1 is not None else False,
+                'In H2': in_h2 if in_h2 is not None else False,
+                'In Body': in_body
             })
     
     report_df = pd.DataFrame(report_data)
@@ -329,7 +385,7 @@ if gsc_file and sf_file:
         
         # Process data
         with st.spinner("Processing GSC data..."):
-            processed_gsc = process_gsc_data(gsc_df, branded_terms)
+            processed_gsc = process_gsc_data(gsc_df, branded_terms, excluded_urls)
             
         if processed_gsc is not None and len(processed_gsc) > 0:
             with st.spinner("Processing crawl data..."):
@@ -352,15 +408,15 @@ if gsc_file and sf_file:
                 potential_clicks = 0
                 for _, row in report.iterrows():
                     missing_count = 0
-                    if not row['In Title']:
+                    if row['In Title'] == False:
                         missing_count += 1
-                    if not row['In Meta']:
+                    if row['In Meta'] == False:
                         missing_count += 1
-                    if not row['In H1']:
+                    if row['In H1'] == False:
                         missing_count += 1
-                    if not row['In H2']:
+                    if row['In H2'] == False:
                         missing_count += 1
-                    if not row['In Body']:
+                    if row['In Body'] == False:  # Don't count "No Data" as missing
                         missing_count += 1
                     
                     # Weight: assume 20% improvement potential per missing element, max 50%
@@ -445,4 +501,13 @@ else:
         - Check if these keywords appear in key on-page elements
         - Prioritize optimization efforts based on click potential
         - Exclude branded terms from analysis
+        - Exclude URLs with no SEO value (blogs, search pages, parameter URLs)
+        
+        **Automatic Exclusions:**
+        - URLs containing parameters (?, =, #)
+        - URLs you specify in the exclusion list (EXACT MATCH ONLY)
+        
+        **Important:** URL exclusion uses exact matching. For example:
+        - Excluding `/blogs/news` will NOT exclude `/blogs/news/article-title`
+        - Each URL must be excluded individually
         """)
