@@ -106,32 +106,38 @@ def check_keyword_presence(keyword, text):
 
 def process_gsc_data(df, branded_terms):
     """Process Google Search Console data"""
-    # Rename columns to standardized names
-    column_mapping = {
-        'Query': 'Keyword',
-        'Landing Page': 'URL',
-        'Address': 'URL',
-        'Page': 'URL',
-        'Landing Pages': 'URL',
-        'URLs': 'URL',
-        'URL': 'URL',
-        'Average Position': 'Position',
-        'Avg. position': 'Position',
-        'Position': 'Position'
-    }
+    # First check if required columns exist BEFORE renaming
+    required_original_cols = ['Query', 'Landing Page', 'Clicks']
+    missing_cols = []
     
-    # Apply column mapping
-    for old_col, new_col in column_mapping.items():
-        if old_col in df.columns and new_col not in df.columns:
-            df.rename(columns={old_col: new_col}, inplace=True)
+    # Check for Query column
+    if 'Query' not in df.columns:
+        missing_cols.append('Query')
     
-    # Ensure required columns exist
-    required_cols = ['Keyword', 'URL', 'Clicks']
-    missing_cols = [col for col in required_cols if col not in df.columns]
+    # Check for Landing Page (or variants)
+    landing_page_variants = ['Landing Page', 'Landing Pages', 'Address', 'URL', 'URLs']
+    if not any(col in df.columns for col in landing_page_variants):
+        missing_cols.append('Landing Page (or Address/URL)')
+    
+    # Check for Clicks
+    if 'Clicks' not in df.columns:
+        missing_cols.append('Clicks')
+    
     if missing_cols:
         st.error(f"Missing required columns in GSC data: {missing_cols}")
-        st.info("Expected columns: Query, Landing Page (or Address/URLs), Clicks")
+        st.info("Expected columns: Query, Landing Page, Clicks")
         return None
+    
+    # Now rename columns to standardized names
+    # Rename Query to Keyword
+    if 'Query' in df.columns:
+        df.rename(columns={'Query': 'Keyword'}, inplace=True)
+    
+    # Rename Landing Page variants to URL
+    for col in landing_page_variants:
+        if col in df.columns:
+            df.rename(columns={col: 'URL'}, inplace=True)
+            break
     
     # Clean data
     df['URL'] = df['URL'].apply(clean_url)
@@ -144,16 +150,24 @@ def process_gsc_data(df, branded_terms):
     # If Position column exists, use it for filtering, otherwise assume all are in range
     if 'Position' in df.columns:
         df['Position'] = pd.to_numeric(df['Position'], errors='coerce')
-        df = df[(df['Position'] >= min_position) & (df['Position'] <= max_position)]
+        # Only filter if we have valid position data
+        df_with_position = df[df['Position'].notna()]
+        if len(df_with_position) > 0:
+            df = df_with_position[(df_with_position['Position'] >= min_position) & 
+                                 (df_with_position['Position'] <= max_position)]
+        else:
+            # No valid position data, keep all rows
+            df['Position'] = 10.0
     else:
-        # If no position data, assign a default position in the middle of the range
+        # If no position column at all, assign default
         df['Position'] = 10.0
-        st.warning("No position data found in GSC export. Analyzing all keywords.")
+        st.info("No position data found. Analyzing all keywords regardless of ranking position.")
     
     # Exclude branded terms
     if branded_terms:
-        pattern = '|'.join([re.escape(term.strip()) for term in branded_terms if term.strip()])
-        if pattern:
+        branded_terms_clean = [term.strip() for term in branded_terms if term.strip()]
+        if branded_terms_clean:
+            pattern = '|'.join([re.escape(term) for term in branded_terms_clean])
             df = df[~df['Keyword'].str.contains(pattern, case=False, na=False)]
     
     # Sort by clicks (descending) and get top keywords per URL
