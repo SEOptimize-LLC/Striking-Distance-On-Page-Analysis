@@ -125,10 +125,73 @@ def clean_url(url):
     return url
 
 def check_keyword_presence(keyword, text):
-    """Check if keyword exists in text (case-insensitive)"""
+    """Check if keyword exists in text with smart matching"""
     if pd.isna(keyword) or pd.isna(text) or keyword == "" or text == "":
         return None  # Return None for missing data
-    return str(keyword).lower() in str(text).lower()
+    
+    # Convert to lowercase for comparison
+    keyword_lower = str(keyword).lower().strip()
+    text_lower = str(text).lower()
+    
+    # Direct match first
+    if keyword_lower in text_lower:
+        return True
+    
+    # Smart matching for variations
+    
+    # 1. Check with common punctuation at the end (?, !, ., :)
+    punctuation_variations = [
+        keyword_lower + "?",
+        keyword_lower + "!",
+        keyword_lower + ".",
+        keyword_lower + ":"
+    ]
+    for variant in punctuation_variations:
+        if variant in text_lower:
+            return True
+    
+    # 2. Check for variations with articles (a, an, the)
+    # Split the keyword into words
+    words = keyword_lower.split()
+    
+    # Create variations by adding articles at different positions
+    article_variations = []
+    articles = ['a', 'an', 'the']
+    
+    for i in range(len(words) + 1):
+        for article in articles:
+            # Insert article at position i
+            variant_words = words[:i] + [article] + words[i:]
+            article_variations.append(' '.join(variant_words))
+    
+    # Also check if keyword exists without articles in the text
+    # Remove common articles from the keyword
+    words_no_articles = [w for w in words if w not in articles]
+    if len(words_no_articles) < len(words):  # If we removed any articles
+        article_variations.append(' '.join(words_no_articles))
+    
+    # Check all article variations
+    for variant in article_variations:
+        if variant in text_lower:
+            return True
+    
+    # 3. Check for plural/singular variations (simple s/es endings)
+    if keyword_lower.endswith('s'):
+        # Try without the 's'
+        singular = keyword_lower[:-1]
+        if singular in text_lower:
+            return True
+    elif keyword_lower.endswith('es'):
+        # Try without the 'es'
+        singular = keyword_lower[:-2]
+        if singular in text_lower:
+            return True
+    else:
+        # Try adding 's' or 'es'
+        if keyword_lower + 's' in text_lower or keyword_lower + 'es' in text_lower:
+            return True
+    
+    return False
 
 def should_exclude_url(url, excluded_urls):
     """Check if URL should be excluded based on exact match or parameters"""
