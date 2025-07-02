@@ -237,6 +237,9 @@ def process_gsc_data(df, branded_terms, excluded_urls):
     # Convert to appropriate data types
     df['Clicks'] = pd.to_numeric(df['Clicks'], errors='coerce').fillna(0)
     
+    # Filter out keywords with 0 clicks
+    df = df[df['Clicks'] > 0]
+    
     # If Position column exists, use it for filtering, otherwise assume all are in range
     if 'Position' in df.columns:
         df['Position'] = pd.to_numeric(df['Position'], errors='coerce')
@@ -262,6 +265,10 @@ def process_gsc_data(df, branded_terms, excluded_urls):
     
     # Sort by clicks (descending) and get top keywords per URL
     df = df.sort_values(['URL', 'Clicks'], ascending=[True, False])
+    
+    # Log filtering results
+    if len(df) == 0:
+        st.warning("No keywords found with clicks > 0 after filtering")
     
     return df
 
