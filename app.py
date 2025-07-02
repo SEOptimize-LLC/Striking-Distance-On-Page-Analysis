@@ -106,27 +106,57 @@ def check_keyword_presence(keyword, text):
 
 def process_gsc_data(df, branded_terms):
     """Process Google Search Console data"""
+    # Debug: Show what columns we actually have
+    st.write("Debug - Columns found in GSC file:")
+    st.write(list(df.columns))
+    
+    # Clean column names (remove extra spaces, normalize)
+    df.columns = df.columns.str.strip()
+    
     # First check if required columns exist BEFORE renaming
-    required_original_cols = ['Query', 'Landing Page', 'Clicks']
     missing_cols = []
     
-    # Check for Query column
-    if 'Query' not in df.columns:
+    # Check for Query column (case-insensitive)
+    query_col = None
+    for col in df.columns:
+        if col.lower() == 'query':
+            query_col = col
+            break
+    if not query_col:
         missing_cols.append('Query')
     
-    # Check for Landing Page (or variants)
-    landing_page_variants = ['Landing Page', 'Landing Pages', 'Address', 'URL', 'URLs']
-    if not any(col in df.columns for col in landing_page_variants):
+    # Check for Landing Page (or variants) - case-insensitive
+    landing_page_col = None
+    landing_page_variants = ['landing page', 'landing pages', 'address', 'url', 'urls', 'page', 'top pages']
+    for col in df.columns:
+        if col.lower() in landing_page_variants:
+            landing_page_col = col
+            break
+    if not landing_page_col:
         missing_cols.append('Landing Page (or Address/URL)')
     
-    # Check for Clicks
-    if 'Clicks' not in df.columns:
+    # Check for Clicks - case-insensitive
+    clicks_col = None
+    for col in df.columns:
+        if col.lower() == 'clicks':
+            clicks_col = col
+            break
+    if not clicks_col:
         missing_cols.append('Clicks')
     
     if missing_cols:
         st.error(f"Missing required columns in GSC data: {missing_cols}")
-        st.info("Expected columns: Query, Landing Page, Clicks")
+        st.info("Expected columns: Query, Landing Page (or URL/Address), Clicks")
+        st.write("Available columns in your file:", list(df.columns))
         return None
+    
+    # Now rename columns to standardized names
+    if query_col:
+        df.rename(columns={query_col: 'Keyword'}, inplace=True)
+    if landing_page_col:
+        df.rename(columns={landing_page_col: 'URL'}, inplace=True)
+    if clicks_col and clicks_col != 'Clicks':
+        df.rename(columns={clicks_col: 'Clicks'}, inplace=True)
     
     # Now rename columns to standardized names
     # Rename Query to Keyword
