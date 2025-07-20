@@ -331,7 +331,6 @@ async def crawl_urls_async(urls, progress_bar=None, status_text=None):
     
     crawler_config = CrawlerRunConfig(
         cache_mode=CacheMode.ENABLED if use_cache else CacheMode.DISABLED,
-        wait_for_selector="body",
         timeout=max_wait_time * 1000,
         remove_overlay=True,
         exclude_external_links=True,
