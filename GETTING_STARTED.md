@@ -1,104 +1,84 @@
 # 🚀 Quick Start Guide
 
-## 5-Minute Setup
+## 1. Install & Run (2 minutes)
 
-### 1. Install & Run
 ```bash
-# Navigate to the project directory
+# Navigate to the project folder
 cd "C:\Users\admin\Documents\Marketing\Roger SEO\Scripts\Striking-Distance-On-Page-Analysis"
 
-# Run setup (recommended)
-python setup.py
-
-# Or install manually
+# Install dependencies
 pip install -r requirements.txt
 
-# Start the app
+# Run the tool
 streamlit run app.py
 ```
 
-### 2. Get Your Google Search Console Data
+## 2. Get Your Data (3 minutes)
 
-**Option A: Google Search Console Export**
-1. Go to [Google Search Console](https://search.google.com/search-console/)
+### From Google Search Console:
+1. Go to [Google Search Console](https://search.google.com/search-console)
 2. Select your property
-3. Go to "Performance" → "Search results"
-4. Click "Export" → "Download CSV"
+3. Go to **Performance → Search Results**
+4. Set date range (recommend last 3-6 months)
+5. Click **Export → Download CSV**
 
-**Option B: Google Analytics 4 (if linked)**
-1. Go to GA4 → Reports → Search Console → Queries
-2. Export the report
+### Required columns in your CSV:
+- **Query** (keyword)
+- **Landing Page** (URL)
+- **Clicks**
+- **Position** (optional)
 
-### 3. Upload & Configure
-1. **Upload your GSC file** in the app
-2. **Add branded terms** to exclude (one per line):
-   ```
-   your company name
-   yourbrand
-   trademark
-   ```
-3. **Exclude URLs** you don't want analyzed (exact match):
-   ```
-   https://example.com/blog
-   https://example.com/contact
-   ```
+## 3. Upload & Analyze (1 minute)
 
-### 4. Start Analysis
-Click "Start Analysis" and watch the AI crawl your URLs in real-time!
+1. **Upload your GSC CSV file**
+2. **Configure settings**:
+   - Add branded terms to exclude
+   - Set URL exclusions if needed
+   - Adjust keywords per URL (default: 10)
+3. **Click "Start Analysis"**
+4. **Download your report**
 
-## 🎯 Pro Tips
+## 4. Read Your Results
 
-### For Best Results
-- **Use 30-90 days of data** for statistical significance
-- **Focus on keywords with 10+ clicks** for actionable insights
-- **Prioritize positions 8-15** for quick wins
-- **Check 5-10 keywords per URL** for comprehensive analysis
+Your report will show:
+- **URLs** with striking distance keywords (positions 4-20)
+- **Keywords** ranked by clicks
+- **Optimization gaps** (missing from title, meta, H1, H2, body)
+- **Click potential** for improvements
 
-### Sample Data Format
-Your CSV should have these columns:
-```
-Query,Landing Page,Clicks,Position
-best seo tools,https://example.com/seo-tools,245,12
-keyword research,https://example.com/keyword-research,189,8
-```
+## 🎯 Example Workflow
 
-### Common Issues & Fixes
+1. **Export GSC data** for last 3 months
+2. **Upload to tool** and run analysis
+3. **Focus on keywords** with:
+   - High clicks but missing from title/meta
+   - Positions 4-10 with content gaps
+   - Your brand terms filtered out
+4. **Optimize pages** by adding missing keywords
+5. **Track improvements** in GSC after 2-4 weeks
 
-**"crawl4ai not found"**
-```bash
-pip install crawl4ai --upgrade
-```
+## 📊 Sample Output
 
-**"Chrome not found"**
-- Install Google Chrome
-- Or disable headless mode in settings
+| URL | Keyword | Clicks | Position | In Title | In Meta | In H1 | In H2 | In Body |
+|-----|---------|--------|----------|----------|---------|-------|-------|---------|
+| /product-page | best running shoes | 150 | 8 | ❌ | ✅ | ❌ | ✅ | ✅ |
+| /blog-post | running tips | 89 | 12 | ✅ | ❌ | ✅ | ❌ | ✅ |
 
-**"No data found"**
-- Ensure your CSV has "Query" and "Landing Page" columns
-- Check that URLs don't have parameters (?, =, #)
+**Action**: Add "best running shoes" to title and H1 for first URL
 
-## 📊 Understanding Your Results
+## ⚡ Pro Tips
 
-### What the Colors Mean
-- **Green ✅**: Keyword is present
-- **Red ❌**: Keyword is missing (optimization opportunity)
-- **Gray ⚪**: No data available
+- **Start small**: Test with 50-100 URLs first
+- **Use cache**: Enable caching for repeated runs
+- **Filter smart**: Exclude parameter URLs automatically
+- **Focus on wins**: Prioritize keywords in positions 4-10
+- **Monitor**: Check results in GSC after 2-4 weeks
 
-### Quick Actions
-1. **Sort by Clicks**: Focus on high-impact keywords
-2. **Filter by "Missing"**: Find immediate opportunities
-3. **Export CSV**: Share with your team
-4. **Track changes**: Re-run monthly to measure improvements
+## 🆘 Need Help?
 
-## 🔄 Next Steps
+- **No crawl4ai?** → `pip install crawl4ai`
+- **File issues?** → Save as CSV instead of Excel
+- **Failed crawls?** → Increase timeout or disable headless mode
+- **No keywords?** → Check position range and branded filters
 
-1. **Week 1**: Fix missing keywords in titles and meta descriptions
-2. **Week 2**: Add keywords to H1 and H2 headings
-3. **Week 3**: Naturally incorporate keywords into body content
-4. **Week 4**: Re-run analysis to measure improvements
-
-## 📞 Need Help?
-
-- **Check the README.md** for detailed documentation
-- **Review failed URLs** in the app for troubleshooting
-- **Start with 10-20 URLs** for testing before scaling up
+**Ready to go?** Run `streamlit run app.py` and start optimizing!
