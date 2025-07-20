@@ -1,84 +1,62 @@
-# 🚀 Quick Start Guide
+# 🚀 Getting Started with Enhanced Striking Distance Analysis
 
-## 1. Install & Run (2 minutes)
+## Quick Setup Guide
+
+### 1. Install Required Dependencies
 
 ```bash
-# Navigate to the project folder
+# Install crawl4ai
+pip install crawl4ai
+
+# Install other dependencies
+pip install streamlit pandas numpy openpyxl xlrd
+
+# Setup crawl4ai browser
+crawl4ai-setup
+```
+
+### 2. Run the Application
+
+```bash
+# Navigate to the project directory
 cd "C:\Users\admin\Documents\Marketing\Roger SEO\Scripts\Striking-Distance-On-Page-Analysis"
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the tool
+# Start the Streamlit app
 streamlit run app.py
 ```
 
-## 2. Get Your Data (3 minutes)
+### 3. How to Use
 
-### From Google Search Console:
-1. Go to [Google Search Console](https://search.google.com/search-console)
-2. Select your property
-3. Go to **Performance → Search Results**
-4. Set date range (recommend last 3-6 months)
-5. Click **Export → Download CSV**
+1. **Upload your Google Search Console data** - Export from GSC with Query, Landing Page, and Clicks columns
+2. **Configure settings** - Add branded terms to exclude, URLs to exclude, etc.
+3. **Start analysis** - Click "Start Analysis" to begin AI-powered crawling
+4. **Review results** - Get actionable insights for keyword optimization
 
-### Required columns in your CSV:
-- **Query** (keyword)
-- **Landing Page** (URL)
-- **Clicks**
-- **Position** (optional)
+## Key Features
 
-## 3. Upload & Analyze (1 minute)
+✅ **No Screaming Frog Required** - Uses AI-powered crawl4ai for content extraction
+✅ **Clean Content Extraction** - Automatically removes nav, footer, ads, sidebars
+✅ **Smart Keyword Matching** - Handles variations, plurals, and articles
+✅ **Real-time Progress** - See crawling progress with live updates
+✅ **Export Results** - Download CSV reports for further analysis
 
-1. **Upload your GSC CSV file**
-2. **Configure settings**:
-   - Add branded terms to exclude
-   - Set URL exclusions if needed
-   - Adjust keywords per URL (default: 10)
-3. **Click "Start Analysis"**
-4. **Download your report**
+## Troubleshooting
 
-## 4. Read Your Results
+### Common Issues
 
-Your report will show:
-- **URLs** with striking distance keywords (positions 4-20)
-- **Keywords** ranked by clicks
-- **Optimization gaps** (missing from title, meta, H1, H2, body)
-- **Click potential** for improvements
+1. **crawl4ai not found**: Run `pip install crawl4ai`
+2. **Browser setup issues**: Run `python -m playwright install chromium`
+3. **Large datasets**: Increase max wait time in settings
+4. **Failed crawls**: Check if URLs are accessible and not blocked
 
-## 🎯 Example Workflow
+### Data Format Requirements
 
-1. **Export GSC data** for last 3 months
-2. **Upload to tool** and run analysis
-3. **Focus on keywords** with:
-   - High clicks but missing from title/meta
-   - Positions 4-10 with content gaps
-   - Your brand terms filtered out
-4. **Optimize pages** by adding missing keywords
-5. **Track improvements** in GSC after 2-4 weeks
+Your GSC export should have these columns:
+- **Query** or **Keyword** - Search terms
+- **Landing Page** or **URL** - Page URLs
+- **Clicks** - Number of clicks
+- **Position** (optional) - Ranking position
 
-## 📊 Sample Output
+## Support
 
-| URL | Keyword | Clicks | Position | In Title | In Meta | In H1 | In H2 | In Body |
-|-----|---------|--------|----------|----------|---------|-------|-------|---------|
-| /product-page | best running shoes | 150 | 8 | ❌ | ✅ | ❌ | ✅ | ✅ |
-| /blog-post | running tips | 89 | 12 | ✅ | ❌ | ✅ | ❌ | ✅ |
-
-**Action**: Add "best running shoes" to title and H1 for first URL
-
-## ⚡ Pro Tips
-
-- **Start small**: Test with 50-100 URLs first
-- **Use cache**: Enable caching for repeated runs
-- **Filter smart**: Exclude parameter URLs automatically
-- **Focus on wins**: Prioritize keywords in positions 4-10
-- **Monitor**: Check results in GSC after 2-4 weeks
-
-## 🆘 Need Help?
-
-- **No crawl4ai?** → `pip install crawl4ai`
-- **File issues?** → Save as CSV instead of Excel
-- **Failed crawls?** → Increase timeout or disable headless mode
-- **No keywords?** → Check position range and branded filters
-
-**Ready to go?** Run `streamlit run app.py` and start optimizing!
+The tool is ready to use! The remaining linting warnings don't affect functionality - they're just style recommendations.
