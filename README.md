@@ -1,187 +1,121 @@
-# 🎯 Enhanced Striking Distance On-Page Analysis Tool
+# Enhanced Striking Distance Analysis Tool
 
-This enhanced version of the Striking Distance On-Page Analysis tool uses **crawl4ai** to eliminate the need for Screaming Frog exports while providing superior content extraction capabilities.
+This enhanced version replaces the original Striking Distance tool with AI-powered content extraction using **crawl4ai**, eliminating the need for Screaming Frog exports.
 
-## 🚀 What's New
+## 🚀 Key Improvements
 
-- **✅ No Screaming Frog Required**: Direct URL crawling with AI-powered content extraction
-- **🤖 AI-Powered Content Cleaning**: Automatically removes navigation, footers, ads, and sidebars
-- **⚡ Real-time Crawling**: Live progress tracking with async processing
-- **🎯 Enhanced Accuracy**: Better content extraction than traditional crawlers
-- **🔧 Simplified Workflow**: Upload GSC data → Get results
+- **No Screaming Frog Required**: Direct URL crawling with AI-powered content extraction
+- **Clean Content Extraction**: Removes navigation, footers, ads, and sidebars automatically
+- **Flexible Column Mapping**: Handles various GSC export formats automatically
+- **Real-time Progress**: Live crawling progress with status updates
+- **Enhanced Error Handling**: Detailed error reporting for failed URLs
 
 ## 📋 Installation
 
-### Quick Setup
-```bash
-# Install dependencies
-pip install -r requirements.txt
+1. **Install crawl4ai**:
+   ```bash
+   pip install -r requirements_enhanced.txt
+   ```
 
-# Install crawl4ai browser dependencies
-crawl4ai-setup
+2. **Setup crawl4ai**:
+   ```bash
+   crawl4ai-setup
+   ```
 
-# Run the application
-streamlit run app.py
-```
-
-### Manual Setup (if needed)
-```bash
-# Install crawl4ai browser manually
-python -m playwright install chromium
-```
+3. **Run the enhanced app**:
+   ```bash
+   streamlit run enhanced_app.py
+   ```
 
 ## 🎯 How to Use
 
-### 1. Export Google Search Console Data
+### 1. Export from Google Search Console
 - Go to Google Search Console → Performance → Search Results
-- Set date range (recommend 3-6 months)
-- Export with columns: Query, Landing Page, Clicks, Position
+- Set your date range (recommend 3-6 months)
+- Export as CSV/Excel with these columns:
+  - **Query** (or "Keyword", "Search Term")
+  - **Landing Page** (or "URL", "Address", "Page")
+  - **Clicks**
+  - **Position** (optional)
 
-### 2. Upload & Configure
-- Upload your GSC CSV file
-- Configure branded terms to exclude
-- Set URL exclusions (exact match)
-- Choose number of keywords per URL
+### 2. Upload and Configure
+- Upload your GSC export file
+- Add branded terms to exclude (one per line)
+- Add exact URLs to exclude (one per line)
+- Set number of top keywords to analyze per URL
 
 ### 3. Run Analysis
 - Click "Start Analysis"
 - Watch real-time crawling progress
-- Download results as CSV
+- Download your optimized report
 
-## 📊 Output Report
+## 📊 Report Output
 
-The tool generates a comprehensive report with:
+The tool generates a CSV with these columns:
+- **URL**: The page URL
+- **Keyword**: The search query
+- **Clicks**: Current clicks from GSC
+- **Position**: Current ranking position
+- **In Title**: Keyword found in page title
+- **In Meta Description**: Keyword found in meta description
+- **In H1**: Keyword found in H1 heading
+- **In H2**: Keyword found in H2 headings
+- **In Body**: Keyword found in main content
 
-| Column | Description |
-|--------|-------------|
-| **URL** | The page URL |
-| **Keyword** | Search query from GSC |
-| **Clicks** | Click volume from GSC |
-| **Position** | Current ranking position |
-| **In Title** | Keyword present in title tag |
-| **In Meta Description** | Keyword present in meta description |
-| **In H1** | Keyword present in H1 heading |
-| **In H2** | Keyword present in H2 headings |
-| **In Body** | Keyword present in main content |
+## 🔧 Column Mapping
 
-## 🔍 Key Features
+The tool automatically detects columns with these names:
 
-### AI Content Extraction
-- **Clean Content**: Removes navigation, footers, ads, sidebars
-- **SEO Focus**: Extracts only main content relevant for SEO
-- **Smart Processing**: Handles JavaScript-rendered content
-- **Fast Performance**: Async crawling with progress tracking
+**Query/Keyword columns:**
+- Query, Queries, Keyword, Keywords, Search Term
 
-### Smart Keyword Matching
-- **Case-insensitive**: Matches regardless of case
-- **Variation Support**: Handles plural/singular forms
-- **Article Handling**: Ignores "a", "an", "the" variations
-- **Punctuation**: Handles punctuation variations
+**URL columns:**
+- Landing Page, Landing Pages, URL, URLs, Address, Page, Pages, Link, Links, Path, URI
 
-### URL Filtering
-- **Parameter Exclusion**: Automatically excludes URLs with ?, =, #
-- **Exact Match**: URL exclusions use exact matching
-- **Branded Terms**: Filter out brand-related keywords
+**Clicks columns:**
+- Clicks, Click, Visits, Traffic
 
-## 🎯 Striking Distance Keywords
-
-**Definition**: Keywords ranking in positions 4-20 where small optimizations can lead to significant traffic gains.
-
-**Why Focus Here**:
-- Already ranking (not starting from zero)
-- High potential for traffic increase
-- Lower competition than top 3 positions
-- Quick wins with on-page optimization
-
-## 📈 Optimization Opportunities
-
-The tool identifies missing keyword placements:
-
-1. **Title Tag**: Most important on-page SEO element
-2. **Meta Description**: Affects click-through rate
-3. **H1 Heading**: Primary page heading
-4. **H2 Subheadings**: Support keyword relevance
-5. **Body Content**: Context and semantic relevance
+**Position columns:**
+- Position, Rank, Ranking, Avg Position, Average Position
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
-
-**crawl4ai not found**:
+### crawl4ai Installation Issues
 ```bash
-pip install crawl4ai
-crawl4ai-setup
-```
-
-**Browser issues**:
-```bash
+# If crawl4ai-setup fails, try:
 python -m playwright install chromium
 ```
 
-**Missing columns in GSC export**:
-- Ensure you export with: Query, Landing Page, Clicks, Position
-- Try CSV format if Excel causes issues
+### Memory Issues
+- Reduce the number of URLs by filtering your GSC export
+- Use shorter date ranges in GSC exports
+- Exclude low-traffic URLs
 
-### Performance Tips
+### Failed URL Crawls
+- Check if URLs are accessible
+- Verify URLs don't require authentication
+- Check for rate limiting on target sites
 
-- **Cache**: Results are cached for faster re-runs
-- **Batch Size**: Tool processes URLs in batches
-- **Timeout**: Long URLs may timeout - check failed URLs list
+## 📈 Optimization Tips
 
-## 📊 Example Use Cases
-
-### E-commerce Site
-- Identify product keywords in striking distance
-- Optimize product pages for specific queries
-- Improve category page targeting
-
-### Content Site
-- Find blog post optimization opportunities
-- Identify content gaps
-- Improve internal linking
-
-### Local Business
-- Target local service keywords
-- Optimize location pages
-- Improve Google My Business integration
+1. **Focus on high-click keywords**: Prioritize keywords with >10 clicks
+2. **Look for missing keywords**: Keywords not in Title/H1 are quick wins
+3. **Check meta descriptions**: Often overlooked but important for CTR
+4. **Review H2 usage**: Good for long-tail keyword targeting
+5. **Body content gaps**: Ensure keywords appear naturally in content
 
 ## 🔄 Migration from Original Tool
 
-### Key Differences
-| Original Tool | Enhanced Tool |
-|---------------|---------------|
-| Requires Screaming Frog export | Direct URL crawling |
-| Manual HTML export needed | AI-powered extraction |
-| Static content analysis | Dynamic content support |
-| Limited filtering | Advanced exclusions |
+If you were using the original tool:
+1. **No Screaming Frog needed**: Skip the SF crawl entirely
+2. **Same GSC format**: Your existing GSC exports work directly
+3. **Enhanced accuracy**: AI extracts cleaner content than SF's "Copy" field
+4. **Faster setup**: No need to configure SF custom extractions
 
-### Migration Steps
-1. Stop using Screaming Frog exports
-2. Use only GSC performance data
-3. Upload same GSC file to enhanced tool
-4. Configure same exclusions/branded terms
-5. Run analysis
+## 🆘 Support
 
-## 🚀 Advanced Usage
-
-### Custom Filtering
-- Use URL exclusions for specific pages
-- Filter branded terms by business name
-- Adjust keyword count per URL
-
-### Batch Processing
-- Process large sites efficiently
-- Resume interrupted crawls
-- Export results for further analysis
-
-## 📞 Support
-
-For issues or questions:
-1. Check the failed URLs list for specific errors
-2. Verify GSC export format
+For issues:
+1. Check the "View failures" expander for failed URLs
+2. Verify your GSC export has the required columns
 3. Ensure crawl4ai is properly installed
-4. Check browser dependencies
-
-## 📝 License
-
-This enhanced tool builds upon the original Striking Distance On-Page Analysis tool with crawl4ai integration for improved functionality.
+4. Check internet connectivity for URL crawling
