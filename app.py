@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-import asyncio
 import re
-from typing import List
+import asyncio
 
 # Import crawl4ai components
 try:
@@ -71,7 +70,7 @@ gsc_file = st.file_uploader(
     help="Export from GSC with Query, Landing Page, Clicks, Impressions, CTR, Position"
 )
 
-# Helper functions
+
 def load_file(file):
     """Load CSV or Excel file into pandas DataFrame"""
     try:
@@ -107,6 +106,7 @@ def load_file(file):
         st.error(f"Error reading file {file.name}: {str(e)}")
         raise
 
+
 def clean_url(url):
     """Standardize URL format"""
     if pd.isna(url):
@@ -114,6 +114,7 @@ def clean_url(url):
     url = str(url).strip()
     url = url.rstrip('/')
     return url
+
 
 def check_keyword_presence(keyword, text):
     """Check if keyword exists in text with smart matching"""
@@ -170,6 +171,7 @@ def check_keyword_presence(keyword, text):
     
     return False
 
+
 def should_exclude_url(url, excluded_urls):
     """Check if URL should be excluded based on exact match or parameters"""
     if any(param in str(url) for param in ['?', '=', '#']):
@@ -193,6 +195,7 @@ def should_exclude_url(url, excluded_urls):
                         return True
     
     return False
+
 
 def process_gsc_data(df, branded_terms, excluded_urls):
     """Process Google Search Console data"""
@@ -276,6 +279,7 @@ def process_gsc_data(df, branded_terms, excluded_urls):
     
     return df
 
+
 async def crawl_url(url, crawler, config):
     """Crawl a single URL using crawl4ai"""
     try:
@@ -314,6 +318,7 @@ async def crawl_url(url, crawler, config):
             'Error': str(e)
         }
 
+
 async def crawl_urls_async(urls, progress_bar=None, status_text=None):
     """Crawl multiple URLs asynchronously"""
     if not CRAWL4AI_AVAILABLE:
@@ -351,6 +356,7 @@ async def crawl_urls_async(urls, progress_bar=None, status_text=None):
             results.append(result)
     
     return results
+
 
 def create_striking_distance_report(gsc_df, crawl_results):
     """Create the final striking distance report"""
@@ -409,4 +415,175 @@ def create_striking_distance_report(gsc_df, crawl_results):
                 'In Body': in_body if in_body is not None else False
             })
     
-    report_df = pd.DataFrame
+    report_df = pd.DataFrame(report_data)
+    
+    # Sort by URL and then by Clicks (descending)
+    report_df = report_df.sort_values(['URL', 'Clicks'], ascending=[True, False])
+    
+    return report_df
+
+
+# Main processing
+if gsc_file:
+    st.success("✅ GSC file uploaded successfully!")
+    if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
+        st.session_state['start_analysis'] = True
+else:
+    st.info("👆 Please upload your Google Search Console CSV file to begin analysis.")
+
+# Analysis execution
+if 'start_analysis' in st.session_state and st.session_state['start_analysis']:
+    try:
+        # Load data
+        with st.spinner("Loading GSC data..."):
+            gsc_df = load_file(gsc_file)
+        
+        # Process data
+        with st.spinner("Processing GSC data..."):
+            processed_gsc = process_gsc_data(gsc_df, branded_terms, excluded_urls)
+            
+        if processed_gsc is not None and len(processed_gsc) > 0:
+            # Get unique URLs to crawl
+            unique_urls = processed_gsc['URL'].unique()
+            st.info(f"Found {len(unique_urls)} unique URLs to crawl")
+            
+            # Crawl URLs
+            with st.spinner("Crawling URLs with AI..."):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                # Run async crawling
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                crawl_results = loop.run_until_complete(
+                    crawl_urls_async(unique_urls, progress_bar, status_text)
+                )
+                
+                # Filter successful crawls
+                successful_crawls = [r for r in crawl_results if r['Success']]
+                failed_crawls = [r for r in crawl_results if not r['Success']]
+                
+                if failed_crawls:
+                    st.warning(f"Failed to crawl {len(failed_crawls)} URLs")
+                    with st.expander("View failed URLs"):
+                        for fail in failed_crawls:
+                            st.write(f"- {fail['URL']}: {fail['Error']}")
+                
+                if len(successful_crawls) > 0:
+                    # Create final report
+                    with st.spinner("Creating striking distance report..."):
+                        report = create_striking_distance_report(processed_gsc, successful_crawls)
+                    
+                    # Display results
+                    st.success(f"✅ Analysis complete! Found {len(report['URL'].unique())} URLs with striking distance keywords.")
+                    
+                    # Summary metrics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total URLs Analyzed", len(report['URL'].unique()))
+                    with col2:
+                        st.metric("Total Keywords Analyzed", len(report))
+                    with col3:
+                        # Calculate weighted average potential
+                        potential_clicks = 0
+                        for _, row in report.iterrows():
+                            missing_count = 0
+                            if row['In Title'] == False:
+                                missing_count += 1
+                            if row['In Meta Description'] == False:
+                                missing_count += 1
+                            if row['In H1'] == False:
+                                missing_count += 1
+                            if row['In H2'] == False:
+                                missing_count += 1
+                            if row['In Body'] == False:
+                                missing_count += 1
+                            
+                            # Weight: assume 20% improvement potential per missing element, max 50%
+                            weight = min(0.5, missing_count * 0.1)
+                            potential_clicks += row['Clicks'] * weight
+                        
+                        st.metric("Weighted Click Potential", int(potential_clicks))
+                    
+                    # Full report
+                    st.header("📊 Full Report")
+                    
+                    # Create download button
+                    csv = report.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Full Report (CSV)",
+                        data=csv,
+                        file_name="striking_distance_report.csv",
+                        mime="text/csv"
+                    )
+                    
+                    # Display sample of report
+                    st.subheader("Report Preview (First 20 rows)")
+                    st.dataframe(report.head(20))
+                    
+                    # Reset analysis state
+                    st.session_state['start_analysis'] = False
+                else:
+                    st.error("No URLs were successfully crawled. Please check the failed URLs and try again.")
+                    
+        else:
+            st.warning("No keywords found in the specified position range after filtering.")
+            
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        st.write("Please check that your file has the correct format and columns.")
+        st.write("Supported formats: CSV, XLSX, XLS")
+        
+        # More detailed error info for debugging
+        if "load_file" in str(e) or "read_excel" in str(e):
+            st.info("💡 Tip: If you're having issues with Excel files, try saving as CSV format instead.")
+
+else:
+    # Instructions
+    st.info("👆 Please upload your Google Search Console CSV file to begin analysis.")
+    
+    with st.expander("📋 Required File Formats"):
+        st.markdown("""
+        ### Google Search Console Export
+        Required columns:
+        - **Query** - The search term/keyword
+        - **Landing Page** (or Address/URL) - The URL that appeared in search
+        - **Clicks** - Number of clicks received
+        
+        Optional but recommended:
+        - **Position** - Average ranking position
+        - **Impressions** - Number of times shown in search
+        - **CTR** - Click-through rate
+        
+        ### How This Tool Works
+        1. Upload your GSC performance report
+        2. The tool identifies keywords in striking distance (positions 4-20)
+        3. AI-powered crawling extracts clean content from each URL
+        4. Keywords are checked against Title, Meta Description, H1, H2, and Body content
+        5. Get actionable insights for on-page optimization
+        
+        **Key Features:**
+        - ✅ No need for Screaming Frog exports
+        - ✅ AI-powered content extraction (removes nav, footer, ads, etc.)
+        - ✅ Smart keyword matching with variations
+        - ✅ Branded term filtering
+        - ✅ URL exclusion capabilities
+        - ✅ Real-time crawling with progress tracking
+        """)
+    
+    with st.expander("🎯 What are Striking Distance Keywords?"):
+        st.markdown("""
+        Striking Distance keywords are search queries where your website ranks between positions 4-20. 
+        These represent opportunities where small optimizations can lead to significant traffic gains.
+        
+        This tool helps you:
+        - Identify keywords just outside the top 3 positions
+        - Check if these keywords appear in key on-page elements
+        - Prioritize optimization efforts based on click potential
+        - Exclude branded terms from analysis
+        - Exclude URLs with no SEO value
+        
+        **Automatic Exclusions:**
+        - URLs containing parameters (?, =, #)
+        - URLs you specify in the exclusion list (EXACT MATCH ONLY)
+        """)
