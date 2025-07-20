@@ -22,8 +22,7 @@ st.set_page_config(
 st.title("🎯 Striking Distance On Page Analysis")
 st.markdown("""
 This tool uses **crawl4ai** to extract clean, SEO-relevant content directly from URLs,
-eliminating the need for Screaming Frog exports. It cross-references Google Search Console data
-with AI-powered content extraction to identify keyword optimization opportunities.
+eliminating the need for Screaming Frog exports.
 """)
 
 # Sidebar for settings
@@ -40,7 +39,7 @@ branded_terms = st.sidebar.text_area(
 excluded_urls = st.sidebar.text_area(
     "URLs to Exclude (one per line - EXACT MATCH)",
     placeholder="https://www.trysnow.com/blogs/news\n/admin\n/search",
-    help="Enter exact URLs to exclude. Will NOT exclude sub-pages"
+    help="Enter exact URLs to exclude"
 ).strip().split('\n') if st.sidebar.text_area else []
 
 # Top keywords setting
@@ -48,15 +47,8 @@ top_keywords_count = st.sidebar.number_input(
     "Top Keywords to Analyze (by Clicks)", 
     value=10, 
     min_value=1, 
-    max_value=20,
-    help="Number of top-performing keywords to analyze per URL"
+    max_value=20
 )
-
-# crawl4ai settings
-st.sidebar.header("🤖 crawl4ai Settings")
-use_cache = st.sidebar.checkbox("Use Cache", value=True, help="Cache crawled content for faster subsequent runs")
-headless = st.sidebar.checkbox("Headless Mode", value=True, help="Run browser in headless mode")
-max_wait_time = st.sidebar.number_input("Max Wait Time (seconds)", value=30, min_value=10, max_value=120)
 
 # Fixed settings
 min_position = 4
@@ -67,9 +59,8 @@ st.header("📊 Google Search Console Data")
 gsc_file = st.file_uploader(
     "Upload GSC Performance Report",
     type=['csv', 'xlsx', 'xls'],
-    help="Export from GSC with Query, Landing Page, Clicks, Impressions, CTR, Position"
+    help="Export from GSC with Query, Landing Page, Clicks, Position"
 )
-
 
 def load_file(file):
     """Load CSV or Excel file into pandas DataFrame"""
@@ -96,16 +87,10 @@ def load_file(file):
         elif file_ext == 'xls':
             return pd.read_excel(file, engine='xlrd')
         else:
-            if hasattr(file, 'type'):
-                if 'csv' in file.type:
-                    return pd.read_csv(file)
-                elif 'excel' in file.type or 'spreadsheet' in file.type:
-                    return pd.read_excel(file)
             raise ValueError(f"Unsupported file format: {file.name}")
     except Exception as e:
         st.error(f"Error reading file {file.name}: {str(e)}")
         raise
-
 
 def clean_url(url):
     """Standardize URL format"""
@@ -115,157 +100,80 @@ def clean_url(url):
     url = url.rstrip('/')
     return url
 
-
 def check_keyword_presence(keyword, text):
-    """Check if keyword exists in text with smart matching"""
+    """Check if keyword exists in text"""
     if pd.isna(keyword) or pd.isna(text) or keyword == "" or text == "":
         return None
     
     keyword_lower = str(keyword).lower().strip()
     text_lower = str(text).lower()
     
-    if keyword_lower in text_lower:
-        return True
-    
-    # Smart matching for variations
-    punctuation_variations = [
-        keyword_lower + "?",
-        keyword_lower + "!",
-        keyword_lower + ".",
-        keyword_lower + ":"
-    ]
-    for variant in punctuation_variations:
-        if variant in text_lower:
-            return True
-    
-    # Check for variations with articles
-    words = keyword_lower.split()
-    article_variations = []
-    articles = ['a', 'an', 'the']
-    
-    for i in range(len(words) + 1):
-        for article in articles:
-            variant_words = words[:i] + [article] + words[i:]
-            article_variations.append(' '.join(variant_words))
-    
-    words_no_articles = [w for w in words if w not in articles]
-    if len(words_no_articles) < len(words):
-        article_variations.append(' '.join(words_no_articles))
-    
-    for variant in article_variations:
-        if variant in text_lower:
-            return True
-    
-    # Check for plural/singular variations
-    if keyword_lower.endswith('s'):
-        singular = keyword_lower[:-1]
-        if singular in text_lower:
-            return True
-    elif keyword_lower.endswith('es'):
-        singular = keyword_lower[:-2]
-        if singular in text_lower:
-            return True
-    else:
-        if keyword_lower + 's' in text_lower or keyword_lower + 'es' in text_lower:
-            return True
-    
-    return False
-
+    return keyword_lower in text_lower
 
 def should_exclude_url(url, excluded_urls):
-    """Check if URL should be excluded based on exact match or parameters"""
+    """Check if URL should be excluded"""
     if any(param in str(url) for param in ['?', '=', '#']):
         return True
     
     if excluded_urls:
         normalized_url = str(url).rstrip('/')
-        
         for excluded in excluded_urls:
             excluded = excluded.strip()
             if excluded:
                 excluded_normalized = excluded.rstrip('/')
-                
                 if normalized_url == excluded_normalized:
                     return True
-                
-                if not excluded_normalized.startswith('http'):
-                    if (normalized_url == f"https://{excluded_normalized}" or 
-                        normalized_url == f"http://{excluded_normalized}" or
-                        normalized_url.endswith(f"/{excluded_normalized}")):
-                        return True
-    
     return False
-
 
 def process_gsc_data(df, branded_terms, excluded_urls):
     """Process Google Search Console data"""
     df.columns = df.columns.str.strip()
     
-    missing_cols = []
+    # Find required columns
+    query_col = next((col for col in df.columns if col.lower() == 'query'), None)
+    landing_col = next((col for col in df.columns 
+                       if col.lower() in ['landing page', 'address', 'url']), None)
+    clicks_col = next((col for col in df.columns if col.lower() == 'clicks'), None)
     
-    query_col = None
-    for col in df.columns:
-        if col.lower() == 'query':
-            query_col = col
-            break
-    if not query_col:
-        missing_cols.append('Query')
-    
-    landing_page_col = None
-    landing_page_variants = ['landing page', 'landing pages', 'address', 'url', 'urls', 'page', 'top pages']
-    for col in df.columns:
-        if col.lower() in landing_page_variants:
-            landing_page_col = col
-            break
-    if not landing_page_col:
-        missing_cols.append('Landing Page (or Address/URL)')
-    
-    clicks_col = None
-    for col in df.columns:
-        if col.lower() == 'clicks':
-            clicks_col = col
-            break
-    if not clicks_col:
-        missing_cols.append('Clicks')
-    
-    if missing_cols:
-        st.error(f"Missing required columns in GSC data: {missing_cols}")
-        st.info("Expected columns: Query, Landing Page (or URL/Address), Clicks")
-        st.write("Available columns in your file:", list(df.columns))
+    if not all([query_col, landing_col, clicks_col]):
+        missing = []
+        if not query_col: missing.append('Query')
+        if not landing_col: missing.append('Landing Page/URL')
+        if not clicks_col: missing.append('Clicks')
+        st.error(f"Missing required columns: {missing}")
         return None
     
-    if query_col:
-        df.rename(columns={query_col: 'Keyword'}, inplace=True)
-    if landing_page_col:
-        df.rename(columns={landing_page_col: 'URL'}, inplace=True)
-    if clicks_col and clicks_col != 'Clicks':
-        df.rename(columns={clicks_col: 'Clicks'}, inplace=True)
+    # Rename columns
+    df = df.rename(columns={
+        query_col: 'Keyword',
+        landing_col: 'URL',
+        clicks_col: 'Clicks'
+    })
     
+    # Clean data
     df['URL'] = df['URL'].apply(clean_url)
     df = df[df['URL'].notna() & (df['URL'] != '')]
     df = df[df['Keyword'].notna() & (df['Keyword'] != '')]
     
+    # Exclude URLs
     initial_count = len(df)
     df = df[~df['URL'].apply(lambda x: should_exclude_url(x, excluded_urls))]
     excluded_count = initial_count - len(df)
     if excluded_count > 0:
-        st.info(f"Excluded {excluded_count} URLs (parameter URLs and exact matches from exclusion list)")
+        st.info(f"Excluded {excluded_count} URLs")
     
+    # Convert data types
     df['Clicks'] = pd.to_numeric(df['Clicks'], errors='coerce').fillna(0)
     df = df[df['Clicks'] > 0]
     
+    # Filter by position
     if 'Position' in df.columns:
         df['Position'] = pd.to_numeric(df['Position'], errors='coerce')
-        df_with_position = df[df['Position'].notna()]
-        if len(df_with_position) > 0:
-            df = df_with_position[(df_with_position['Position'] >= min_position) & 
-                                 (df_with_position['Position'] <= max_position)]
-        else:
-            df['Position'] = 10.0
+        df = df[(df['Position'] >= min_position) & (df['Position'] <= max_position)]
     else:
         df['Position'] = 10.0
-        st.info("No position data found. Analyzing all keywords regardless of ranking position.")
     
+    # Exclude branded terms
     if branded_terms:
         branded_terms_clean = [term.strip() for term in branded_terms if term.strip()]
         if branded_terms_clean:
@@ -275,15 +183,14 @@ def process_gsc_data(df, branded_terms, excluded_urls):
     df = df.sort_values(['URL', 'Clicks'], ascending=[True, False])
     
     if len(df) == 0:
-        st.warning("No keywords found with clicks > 0 after filtering")
+        st.warning("No keywords found after filtering")
     
     return df
 
-
-async def crawl_url(url, crawler, config):
-    """Crawl a single URL using crawl4ai"""
+async def crawl_url_simple(url, crawler):
+    """Simple crawl function using crawl4ai"""
     try:
-        result = await crawler.arun(url=url, config=config)
+        result = await crawler.arun(url=url)
         if result.success:
             return {
                 'URL': url,
@@ -291,7 +198,7 @@ async def crawl_url(url, crawler, config):
                 'Meta Description': result.metadata.get('description', ''),
                 'H1': result.metadata.get('h1', ''),
                 'H2': ' '.join(result.metadata.get('h2', [])),
-                'Body': result.markdown[:5000] if result.markdown else '',
+                'Body': result.markdown[:3000] if result.markdown else '',
                 'Success': True,
                 'Error': None
             }
@@ -318,28 +225,18 @@ async def crawl_url(url, crawler, config):
             'Error': str(e)
         }
 
-
 async def crawl_urls_async(urls, progress_bar=None, status_text=None):
     """Crawl multiple URLs asynchronously"""
     if not CRAWL4AI_AVAILABLE:
         return []
     
     browser_config = BrowserConfig(
-        headless=headless,
+        headless=True,
         verbose=False
     )
     
     crawler_config = CrawlerRunConfig(
-        cache_mode=CacheMode.ENABLED if use_cache else CacheMode.DISABLED,
-        timeout=max_wait_time * 1000,
-        remove_overlay=True,
-        exclude_external_links=True,
-        exclude_social_media_links=True,
-        exclude_external_images=True,
-        word_count_threshold=10,
-        exclude_tags=['nav', 'footer', 'aside', 'header', 'script', 'style', 'noscript'],
-        exclude_classes=['nav', 'navigation', 'menu', 'sidebar', 'footer', 'header', 'advertisement', 'ad', 'social', 'share', 'comment', 'related-posts', 'widget', 'popup', 'modal', 'overlay'],
-        exclude_ids=['nav', 'navigation', 'menu', 'sidebar', 'footer', 'header', 'advertisement', 'ad', 'social', 'share', 'comment', 'related-posts', 'widget', 'popup', 'modal', 'overlay']
+        cache_mode=CacheMode.ENABLED
     )
     
     results = []
@@ -351,11 +248,10 @@ async def crawl_urls_async(urls, progress_bar=None, status_text=None):
             if status_text:
                 status_text.text(f"Crawling {i + 1}/{len(urls)}: {url}")
             
-            result = await crawl_url(url, crawler, crawler_config)
+            result = await crawl_url_simple(url, crawler)
             results.append(result)
     
     return results
-
 
 def create_striking_distance_report(gsc_df, crawl_results):
     """Create the final striking distance report"""
@@ -415,12 +311,8 @@ def create_striking_distance_report(gsc_df, crawl_results):
             })
     
     report_df = pd.DataFrame(report_data)
-    
-    # Sort by URL and then by Clicks (descending)
     report_df = report_df.sort_values(['URL', 'Clicks'], ascending=[True, False])
-    
     return report_df
-
 
 # Main processing
 if gsc_file:
@@ -483,22 +375,20 @@ if 'start_analysis' in st.session_state and st.session_state['start_analysis']:
                     with col2:
                         st.metric("Total Keywords Analyzed", len(report))
                     with col3:
-                        # Calculate weighted average potential
                         potential_clicks = 0
                         for _, row in report.iterrows():
                             missing_count = 0
-                            if row['In Title'] == False:
+                            if not row['In Title']:
                                 missing_count += 1
-                            if row['In Meta Description'] == False:
+                            if not row['In Meta Description']:
                                 missing_count += 1
-                            if row['In H1'] == False:
+                            if not row['In H1']:
                                 missing_count += 1
-                            if row['In H2'] == False:
+                            if not row['In H2']:
                                 missing_count += 1
-                            if row['In Body'] == False:
+                            if not row['In Body']:
                                 missing_count += 1
                             
-                            # Weight: assume 20% improvement potential per missing element, max 50%
                             weight = min(0.5, missing_count * 0.1)
                             potential_clicks += row['Clicks'] * weight
                         
@@ -532,10 +422,6 @@ if 'start_analysis' in st.session_state and st.session_state['start_analysis']:
         st.error(f"An error occurred: {str(e)}")
         st.write("Please check that your file has the correct format and columns.")
         st.write("Supported formats: CSV, XLSX, XLS")
-        
-        # More detailed error info for debugging
-        if "load_file" in str(e) or "read_excel" in str(e):
-            st.info("💡 Tip: If you're having issues with Excel files, try saving as CSV format instead.")
 
 else:
     # Instructions
